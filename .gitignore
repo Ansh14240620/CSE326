@@ -1,0 +1,6 @@
+# Ignore local configuration containing real API keys
+firebase-config.js
+
+# OS files
+.DS_Store
+Thumbs.db

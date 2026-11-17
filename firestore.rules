@@ -1,0 +1,202 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // Assumed Data Models & Schema Definitions
+    // =========================================================================
+    //
+    // Collection: 'users'
+    // Document ID: {userId} (Must match request.auth.uid)
+    // Fields:
+    //   - name:  string (1..100 chars, required) - Display name from Auth/Profile
+    //   - email: string (5..150 chars, required, valid email format)
+    //   - photo: string (0..500 chars, optional/URL) - Profile avatar URL
+    //   - phone: string (5..25 chars, required) - Contact phone/WhatsApp number
+    //   - role:  string (required, enum: 'Donor' | 'Volunteer' | 'Recipient' | 'NGO')
+    //
+    // Collection: 'posts'
+    // Document ID: {postId} (Auto-generated Firestore ID)
+    // Fields:
+    //   - donorId:    string (required, UID of author, immutable)
+    //   - donorName:  string (1..100 chars, required)
+    //   - donorPhoto: string (0..500 chars, required)
+    //   - donorPhone: string (0..30 chars, optional/contact string)
+    //   - foodTitle:  string (1..150 chars, required)
+    //   - quantity:   string (1..100 chars, required)
+    //   - expiry:     string (1..100 chars, required)
+    //   - location:   string (1..200 chars, required)
+    //   - status:     string (required, enum: 'Available' | 'Claimed' | 'Delivered')
+    //   - claimedBy:  string (1..100 chars) or null (Volunteer name if claimed)
+    //   - createdAt:  timestamp (required, server timestamp, immutable)
+    //
+    // =========================================================================
+
+    // =========================================================================
+    // Core Helper Functions (Defense-in-Depth & DRY Principles)
+    // =========================================================================
+
+    // 1. Authentication Check
+    // Verifies that incoming request originates from a verified, signed-in user.
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // 2. Document Ownership Check
+    // Ensures the authenticated user's UID matches the resource owner ID.
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // 3. Email Format Validation
+    // Regex ensuring standard RFC 5322-compliant email syntax.
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // 4. Schema Whitelist Enforcement
+    // Prevents "Schema Pollution" attacks where an attacker injects unauthorized fields.
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // =========================================================================
+    // Domain Validator Functions (Validator Function Pattern)
+    // =========================================================================
+    // CRITICAL: Called during BOTH 'create' AND 'update' operations to prevent
+    // "Update Bypass" vulnerabilities where an attacker attempts to corrupt
+    // previously valid records with malicious payloads or oversized strings.
+
+    // Validator for 'users' collection
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['name', 'email', 'photo', 'phone', 'role']) &&
+        // Required fields check
+        data.keys().hasAll(['name', 'email', 'phone', 'role']) &&
+        // Name constraint (prevents empty names & resource exhaustion DoS)
+        data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+        // Email constraint & format validation
+        isValidEmail(data.email) && data.email.size() <= 150 &&
+        // Photo constraint (optional, null, or string URL up to 500 chars)
+        (!('photo' in data) || data.photo == null || (data.photo is string && data.photo.size() <= 500)) &&
+        // Phone constraint (allows international formats & local numbers)
+        data.phone is string && data.phone.size() >= 5 && data.phone.size() <= 25 &&
+        // Role constraint (strictly limited to predefined system roles)
+        data.role is string && (data.role in ['Donor', 'Volunteer', 'Recipient', 'NGO']);
+    }
+
+    // Validator for 'posts' collection
+    function isValidPost(data) {
+      return hasOnlyAllowedFields([
+          'donorId', 'donorName', 'donorPhoto', 'donorPhone',
+          'foodTitle', 'quantity', 'expiry', 'location',
+          'status', 'claimedBy', 'createdAt'
+        ]) &&
+        // Required fields verification
+        data.keys().hasAll([
+          'donorId', 'donorName', 'donorPhoto',
+          'foodTitle', 'quantity', 'expiry', 'location',
+          'status', 'claimedBy', 'createdAt'
+        ]) &&
+        // String boundary validations (DoS & payload overflow protection)
+        data.donorId is string && data.donorId.size() > 0 && data.donorId.size() <= 128 &&
+        data.donorName is string && data.donorName.size() > 0 && data.donorName.size() <= 100 &&
+        (data.donorPhoto == null || (data.donorPhoto is string && data.donorPhoto.size() <= 500)) &&
+        (!('donorPhone' in data) || data.donorPhone == null || (data.donorPhone is string && data.donorPhone.size() <= 30)) &&
+        data.foodTitle is string && data.foodTitle.size() > 0 && data.foodTitle.size() <= 150 &&
+        data.quantity is string && data.quantity.size() > 0 && data.quantity.size() <= 100 &&
+        data.expiry is string && data.expiry.size() > 0 && data.expiry.size() <= 100 &&
+        data.location is string && data.location.size() > 0 && data.location.size() <= 200 &&
+        // Status lifecycle constraint
+        data.status is string && (data.status in ['Available', 'Claimed', 'Delivered']) &&
+        // ClaimedBy status constraint (null when available, string when claimed/delivered)
+        (data.claimedBy == null || (data.claimedBy is string && data.claimedBy.size() > 0 && data.claimedBy.size() <= 100)) &&
+        // Timestamp integrity
+        data.createdAt is timestamp;
+    }
+
+    // =========================================================================
+    // Security Rules Matrix
+    // =========================================================================
+
+    // 1. Default Deny Root Fallback
+    // Standard Principle of Least Privilege: Any unspecified path is rejected by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Users Collection (`users/{userId}`)
+    // Viva Note: User documents use the user's Firebase Auth UID as their Document ID.
+    match /users/{userId} {
+      
+      // Read: Authenticated community members can view member profiles to coordinate food pickup.
+      // Unauthenticated public visitors are denied read access.
+      allow read: if isAuthenticated();
+
+      // Create: Users can only initialize their own document (request.auth.uid == userId).
+      // Data must satisfy strict schema and type constraints (isValidUser).
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+
+      // Update: Users can only update their own profile document.
+      // Must pass full schema validation (eliminates the Update Bypass).
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+
+      // Delete: Denied by default to protect profile history and auditability.
+      allow delete: if false;
+    }
+
+    // 3. Posts Collection (`posts/{postId}`)
+    // Viva Note: Contains surplus food posts for community sharing.
+    match /posts/{postId} {
+
+      // Read & Query: All authenticated users can view posts and query/order them by 'createdAt'.
+      allow read: if isAuthenticated();
+
+      // Create:
+      // - Must be an authenticated user.
+      // - donorId must strictly match request.auth.uid (Prevents Identity Impersonation).
+      // - Initial status must be 'Available' and claimedBy must be null.
+      // - Full schema and size checks enforced via isValidPost().
+      allow create: if isAuthenticated() &&
+                       request.resource.data.donorId == request.auth.uid &&
+                       request.resource.data.status == 'Available' &&
+                       request.resource.data.claimedBy == null &&
+                       isValidPost(request.resource.data);
+
+      // Update:
+      // Must satisfy the Validator Function Pattern (isValidPost) under all conditions.
+      // Supports two legitimate business logic operations:
+      //
+      // Operation A: Volunteer Claiming Action
+      //   - Can be performed by any authenticated user.
+      //   - State Transition: Post must currently be 'Available' and changing to 'Claimed'.
+      //   - claimedBy must be set to the claimant's identifier (non-empty string).
+      //   - Field Lockdown: ONLY 'status' and 'claimedBy' may be modified.
+      //     All other fields (donorId, food details, createdAt) are strictly IMMUTABLE.
+      //
+      // Operation B: Donor Post Management Action
+      //   - Can only be performed by the post author (donorId matches request.auth.uid).
+      //   - Immutable Fields: donorId and createdAt can NEVER be altered.
+      allow update: if isAuthenticated() && isValidPost(request.resource.data) && (
+        // Scenario A: Claiming the donation
+        (
+          resource.data.status == 'Available' &&
+          request.resource.data.status == 'Claimed' &&
+          request.resource.data.claimedBy is string &&
+          request.resource.data.claimedBy.size() > 0 &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'claimedBy'])
+        ) ||
+        // Scenario B: Donor editing/delivering their own post
+        (
+          resource.data.donorId == request.auth.uid &&
+          request.resource.data.donorId == resource.data.donorId &&
+          request.resource.data.createdAt == resource.data.createdAt
+        )
+      );
+
+      // Delete: Only the donor who published the post can delete it.
+      allow delete: if isAuthenticated() && resource.data.donorId == request.auth.uid;
+    }
+  }
+}

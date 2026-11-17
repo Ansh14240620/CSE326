@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Community Food Board - FoodBridge</title>
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- Firebase SDK (Simple CDN version) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <a href="feed.html" class="logo">🍲 FoodBridge</a>
+    <div class="user-nav">
+      <img id="nav-user-photo" class="user-avatar" src="https://via.placeholder.com/34" alt="User">
+      <div>
+        <span id="nav-user-name" style="font-size: 14px; font-weight: 600; display: block;">Loading...</span>
+        <span style="font-size: 12px; color: #64748b;">
+          📞 <span id="nav-user-phone">Loading...</span>
+          <button id="edit-phone-btn" style="background: none; border: none; color: #16a34a; font-size: 11px; cursor: pointer; text-decoration: underline; margin-left: 4px;">(Change)</button>
+        </span>
+      </div>
+      <button id="logout-btn" class="btn btn-outline btn-sm">Sign Out</button>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- Box 1: Create a Food Donation Post -->
+    <div class="card">
+      <h3>📢 Share Surplus Food</h3>
+      <p style="font-size: 13px; color: #64748b; margin-bottom: 15px;">
+        Post available extra food so volunteers or shelters can collect it.
+      </p>
+
+      <form id="create-post-form">
+        <div class="form-group">
+          <label>Food Item & Description:</label>
+          <input type="text" id="food-title" placeholder="e.g. 25 Meal Boxes (Rice, Dal, Rotis)" required>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+          <div class="form-group" style="flex: 1;">
+            <label>Quantity:</label>
+            <input type="text" id="food-quantity" placeholder="e.g. 25 packets / 10 kg" required>
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Collect Before (Expiry):</label>
+            <input type="text" id="food-expiry" placeholder="e.g. Today by 9:00 PM" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Pickup Location / Address:</label>
+          <input type="text" id="food-location" placeholder="e.g. Central Mess, Gate 2" required>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%;">
+          Post Donation to Feed
+        </button>
+      </form>
+    </div>
+
+    <!-- Live Posts Feed -->
+    <h3 style="margin: 20px 0 10px 0;">Live Community Donations</h3>
+    <div id="posts-feed">
+      <!-- Posts will appear here dynamically via JavaScript -->
+      <p style="text-align: center; color: #64748b; font-size: 14px; padding: 20px;">
+        Loading live donations...
+      </p>
+    </div>
+
+  </main>
+
+  <!-- Configuration and Logic Scripts -->
+  <script src="firebase-config.js"></script>
+  <script src="js/feed.js"></script>
+</body>
+</html>
