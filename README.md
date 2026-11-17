@@ -26,7 +26,7 @@ Restaurants, hostels, campus messes, and households frequently have surplus edib
 
 ## 🛠️ Tech Stack
 
-* **Front-end:** HTML5, CSS3, Vanilla JavaScript (ES6)
+* **Front-end:** HTML5, CSS3, JavaScript
 * **Authentication:** Google Firebase Auth (Google Sign-In)
 * **Cloud Database:** Google Cloud Firestore (Real-time synchronization)
 
@@ -51,15 +51,3 @@ CSE326/
 
 ---
 
-## 💻 How to Run Locally
-
-1. Clone or download this repository.
-2. Copy `firebase-config.example.js` to `firebase-config.js` and add your Firebase credentials.
-3. Start the local server:
-   ```bash
-   node server.js
-   ```
-4. Open your browser and navigate to:
-   ```
-   http://localhost:3000/
-   ```
