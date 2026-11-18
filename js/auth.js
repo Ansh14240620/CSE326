@@ -41,7 +41,10 @@ auth.onAuthStateChanged((user) => {
 googleLoginBtn.addEventListener("click", () => {
   const provider = new firebase.auth.GoogleAuthProvider();
   auth.signInWithPopup(provider).catch((error) => {
-    alert("Sign-In Error: " + error.message);
+    // Ignore harmless popup closures so users don't see an alert if they close the window
+    if (error.code !== "auth/popup-closed-by-user" && error.code !== "auth/cancelled-popup-request") {
+      alert("Sign-In Error: " + error.message);
+    }
   });
 });
 
